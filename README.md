@@ -11,26 +11,28 @@
 
 ## 凭证配置方式
 
-在启动桌面应用前，需要先准备好 [nowapi](https://www.nowapi.com/api/finance.rate_history) 提供的 `appkey` 与 `sign`：
+在启动桌面应用前，需要先准备好 [Alpha Vantage](https://www.alphavantage.co/documentation/#fx-daily) 提供的 `API Key`：
 
 1. **环境变量方式**（推荐）：
 
    ```bash
-   export NOWAPI_APPKEY="你的appkey"
-   export NOWAPI_SIGN="你的sign"
+   export ALPHAVANTAGE_API_KEY="你的apikey"
    python main.py
    ```
 
 2. **`.env` 文件方式**：在项目根目录创建 `.env`（或复制 `.env.example`）并填入内容，程序启动时会自动读取：
 
    ```env
-   NOWAPI_APPKEY=你的appkey
-   NOWAPI_SIGN=你的sign
+   ALPHAVANTAGE_API_KEY=你的apikey
+   # 可选：调整请求窗口大小（compact/full）
+   # ALPHAVANTAGE_OUTPUTSIZE=compact
    ```
 
    若需在其他环境中复用，也可以搭配 `python-dotenv` 等工具在运行前自动加载。
 
-3. **界面手动输入**：运行程序后，可直接在界面顶部的输入框中填写 `AppKey` 与 `Sign`，点击“查询”按钮即可保存于当前会话。
+3. **界面手动输入**：运行程序后，可直接在界面顶部的输入框中填写 `API Key`，并按需选择 `Output Size`（`compact` 为最新 100 个交易日，`full` 为全部历史）。点击“查询”按钮即可保存于当前会话。
+
+Alpha Vantage 免费额度为 **每分钟 5 次请求、每天 500 次请求**。若超过额度，API 会返回 `Note` 提示，需要等待额度刷新后再试。
 
 若凭证未配置或输入，程序会提示用户补全信息。
 
