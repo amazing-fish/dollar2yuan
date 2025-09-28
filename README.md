@@ -41,10 +41,13 @@
 1. **同步远端分支**：
 
    ```bash
-   git fetch origin
+   git checkout main
+   git pull origin main --rebase
+   git checkout <feature-branch>
+   git rebase main  # 或 git merge main
    ```
 
-   根据实际分支执行 `git rebase origin/<branch>` 或 `git merge origin/<branch>`，若冲突过多无法继续，可使用 `git rebase --abort` 或 `git merge --abort` 回退并重新规划。
+   先把 `main` 拉到最新可以大幅降低冲突风险，再将工作分支与最新的 `main` 对齐。若在对齐过程中冲突过多无法继续，可使用 `git rebase --abort` 或 `git merge --abort` 回退并重新规划。
 
 2. **查看冲突文件**：
 
