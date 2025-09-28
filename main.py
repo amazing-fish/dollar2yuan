@@ -3,37 +3,36 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 import tkinter as tk
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict
 import requests
 import webview
 
-'''
-appkey和sign来自nowapi网站https://www.nowapi.com/api/finance.rate_history
-或者联系我
-'''
 BASE_DATA_PATH = Path(__file__).resolve().parent / "data" / "usd_cny_base.json"
 DEFAULT_BASE_DAYS = 30
-DEFAULT_BASE_HT_TYPE = 'HT1D'
 
+def fetch_data(api_key, days, outputsize='compact'):
+    if not api_key:
+        raise ValueError("请提供有效的 API Key。")
 
-def fetch_data(appkey, sign, days, ht_type='HT1D'):
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=int(days))
-    date_start = start_date.strftime('%Y%m%d')
-    date_end = end_date.strftime('%Y%m%d')
+    try:
+        days_int = max(int(days), 1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("天数需为正整数。") from exc
 
-    url = "https://sapi.k780.com"
+    size = (outputsize or 'compact').strip().lower()
+    if size not in {'compact', 'full'}:
+        size = 'compact'
+
+    url = "https://www.alphavantage.co/query"
     params = {
-        'app': 'finance.rate_history.v3',
-        'curNoS': 'USDCNY',
-        'htType': ht_type,
-        'dateYmdS': f"{date_start}-{date_end}",
-        'appkey': appkey,
-        'sign': sign,
-        'format': 'json',
+        "function": "FX_DAILY",
+        "from_symbol": "USD",
+        "to_symbol": "CNY",
+        "apikey": api_key,
+        "outputsize": size,
     }
-    
+
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
@@ -45,11 +44,51 @@ def fetch_data(appkey, sign, days, ht_type='HT1D'):
     except ValueError as exc:
         raise ValueError("API 返回的内容不是有效的 JSON。") from exc
 
-    if str(data.get('success')) != '1':
-        err_msg = data.get('msgid') or data.get('msg') or data.get('error') or '未知错误'
-        raise ValueError(f"API 返回失败：{err_msg}")
+    if 'Error Message' in data:
+        raise ValueError(data['Error Message'])
 
-    return data
+    if 'Note' in data:
+        raise ValueError(data['Note'])
+
+    time_series = data.get('Time Series FX (Daily)')
+    if not time_series:
+        raise ValueError("API 未返回有效的日度汇率数据。")
+
+    sorted_dates = sorted(time_series.keys())
+    dt_list = []
+    for date_str in sorted_dates:
+        values = time_series[date_str]
+        try:
+            open_price = float(values['1. open'])
+            high_price = float(values['2. high'])
+            low_price = float(values['3. low'])
+            close_price = float(values['4. close'])
+        except (KeyError, ValueError) as exc:
+            raise ValueError("API 返回的数据结构异常。") from exc
+
+        amplitude = 0.0
+        if low_price:
+            amplitude = ((high_price - low_price) / low_price) * 100
+
+        dt_list.append({
+            'd': date_str.replace('-', ''),
+            'o': f"{open_price:.4f}",
+            'c': f"{close_price:.4f}",
+            'h': f"{high_price:.4f}",
+            'l': f"{low_price:.4f}",
+            'am': f"{amplitude:.2f}",
+        })
+
+    dt_list = dt_list[-days_int:]
+
+    return {
+        'success': '1',
+        'result': {
+            'source': 'alpha_vantage.FX_DAILY',
+            'fetched_at': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'dtList': dt_list,
+        }
+    }
 
 
 def load_base_data():
@@ -227,8 +266,8 @@ def create_gui():
 
     env_defaults = load_local_env()
 
-    appkey_var = tk.StringVar(value=os.getenv('NOWAPI_APPKEY', env_defaults.get('NOWAPI_APPKEY', '')))
-    sign_var = tk.StringVar(value=os.getenv('NOWAPI_SIGN', env_defaults.get('NOWAPI_SIGN', '')))
+    api_key_var = tk.StringVar(value=os.getenv('ALPHAVANTAGE_API_KEY', env_defaults.get('ALPHAVANTAGE_API_KEY', '')))
+    outputsize_var = tk.StringVar(value=os.getenv('ALPHAVANTAGE_OUTPUTSIZE', env_defaults.get('ALPHAVANTAGE_OUTPUTSIZE', 'compact')) or 'compact')
 
     base_data = None
 
@@ -240,8 +279,13 @@ def create_gui():
 
     def refresh_base_data():
         nonlocal base_data
+        api_key = api_key_var.get().strip()
+        if not api_key:
+            messagebox.showerror("错误", "请先输入 API Key！")
+            return
+
         try:
-            data = fetch_data(appkey, sign, DEFAULT_BASE_DAYS, DEFAULT_BASE_HT_TYPE)
+            data = fetch_data(api_key, DEFAULT_BASE_DAYS, outputsize_var.get())
         except ValueError as e:
             messagebox.showerror("错误", f"API错误：{e}")
             return
@@ -257,10 +301,9 @@ def create_gui():
         messagebox.showinfo("成功", f"基础数据已更新\n最新更新时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     def on_submit():
-        appkey = appkey_var.get().strip()
-        sign = sign_var.get().strip()
+        api_key = api_key_var.get().strip()
         days = days_entry.get().strip()
-        ht_type = ht_type_combo.get().strip()
+        outputsize = outputsize_var.get().strip()
 
         # 优先支持“仅查看基础数据”的路径：不需要凭证
         if not days:
@@ -268,8 +311,8 @@ def create_gui():
             return
 
         # 需要发起请求时，必须提供凭证
-        if not appkey or not sign:
-            messagebox.showerror("错误", "请先输入 AppKey 和 Sign 凭证！")
+        if not api_key:
+            messagebox.showerror("错误", "请先输入 API Key！")
             return
 
         if not days.isdigit():
@@ -277,7 +320,7 @@ def create_gui():
             return
 
         try:
-            data = fetch_data(appkey, sign, days, ht_type)
+            data = fetch_data(api_key, days, outputsize)
         except ValueError as e:
             messagebox.showerror("错误", f"API 错误：{e}")
             return
@@ -297,32 +340,28 @@ def create_gui():
     base_data = load_base_data()
 
     # 新增凭证输入框
-    ttk.Label(root, text="AppKey:").grid(row=0, column=0, padx=10, pady=10, sticky='e')
-    appkey_entry = ttk.Entry(root, textvariable=appkey_var)
-    appkey_entry.grid(row=0, column=1, padx=10, pady=10, sticky='we')
+    ttk.Label(root, text="API Key:").grid(row=0, column=0, padx=10, pady=10, sticky='e')
+    api_key_entry = ttk.Entry(root, textvariable=api_key_var)
+    api_key_entry.grid(row=0, column=1, padx=10, pady=10, sticky='we')
 
-    ttk.Label(root, text="Sign:").grid(row=1, column=0, padx=10, pady=10, sticky='e')
-    sign_entry = ttk.Entry(root, textvariable=sign_var, show='*')
-    sign_entry.grid(row=1, column=1, padx=10, pady=10, sticky='we')
+    ttk.Label(root, text="Output Size:").grid(row=1, column=0, padx=10, pady=10, sticky='e')
+    outputsize_combo = ttk.Combobox(root, values=['compact', 'full'], textvariable=outputsize_var, state="readonly")
+    outputsize_combo.grid(row=1, column=1, padx=10, pady=10, sticky='we')
+    if outputsize_var.get() not in {'compact', 'full'}:
+        outputsize_var.set('compact')
 
     # 近x天
     ttk.Label(root, text="近x天:").grid(row=2, column=0, padx=10, pady=10, sticky='e')
     days_entry = ttk.Entry(root)
     days_entry.grid(row=2, column=1, padx=10, pady=10, sticky='we')
 
-    # 数据类型
-    ttk.Label(root, text="数据类型:").grid(row=3, column=0, padx=10, pady=10, sticky='e')
-    ht_type_combo = ttk.Combobox(root, values=['HT1D', 'HT1W', 'HT1M', 'HTHY', 'HT1Y'], state="readonly")
-    ht_type_combo.grid(row=3, column=1, padx=10, pady=10, sticky='we')
-    ht_type_combo.current(0)
-
     # 按钮：查询/查看基础数据（days 为空 → 查看基础数据；非空 → 执行查询并需要凭证）
     submit_btn = ttk.Button(root, text="查询/查看基础数据", command=on_submit)
-    submit_btn.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+    submit_btn.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
 
     # 刷新本地基础数据
     refresh_btn = ttk.Button(root, text="刷新基础数据", command=refresh_base_data)
-    refresh_btn.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+    refresh_btn.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
 
     # 列伸缩
     root.columnconfigure(1, weight=1)
