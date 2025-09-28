@@ -134,7 +134,7 @@ def generate_html_for_echarts(data):
             "formatter": "Date: {b0}<br/>{a0}: {c0} CNY<br/>{a1}: {c1} CNY<br/>{a2}: {c2} CNY<br/>{a3}: {c3} CNY<br/>{a4}: {c4}%"
         },
         "legend": {
-            "data": ['开盘价', '收盘价', '最高价', '最低价', '振幅%'],
+            "data": ['开盘价', '收盘价', '最高价', '最低价', '振幅（%）'],
             "orient": 'horizontal',
             "top": 'top',
             "left": 'center'
@@ -242,29 +242,12 @@ def generate_html_for_echarts(data):
                 flex-direction: column;
             }}
 
-            #toolbar {{
-                padding: 8px 12px;
-                background-color: #f5f5f5;
-                border-bottom: 1px solid #e0e0e0;
-                display: flex;
-                justify-content: flex-end;
-            }}
-
-            #toolbar button {{
-                padding: 6px 12px;
-                font-size: 14px;
-                cursor: pointer;
-            }}
-
             #main {{
                 flex: 1 1 auto;
             }}
         </style>
     </head>
     <body>
-        <div id="toolbar">
-            <button id="toggle-amplitude">切换振幅显示</button>
-        </div>
         <div id="main"></div>
         <script type="text/javascript">
             var myChart = echarts.init(document.getElementById('main'), 'light');
@@ -277,56 +260,72 @@ def generate_html_for_echarts(data):
                 option.legend.selected = {{}};
             }}
 
-            var amplitudeIndex = option.series.findIndex(function (item) {{
-                return item.name === '振幅（%）';
-            }});
-            var amplitudeAxisIndex = 1;
-            var amplitudeButton = document.getElementById('toggle-amplitude');
-            var amplitudeVisible = true;
-
-            function updateAmplitudeButtonText() {{
-                amplitudeButton.textContent = amplitudeVisible ? '隐藏振幅' : '显示振幅';
-            }}
-
-            function applyAmplitudeVisibility() {{
-                option.legend.selected['振幅（%）'] = amplitudeVisible;
-
-                if (Array.isArray(option.yAxis) && option.yAxis.length > amplitudeAxisIndex) {{
-                    option.yAxis[amplitudeAxisIndex].show = amplitudeVisible;
-                    option.yAxis[amplitudeAxisIndex].splitLine = option.yAxis[amplitudeAxisIndex].splitLine || {{}};
-                    option.yAxis[amplitudeAxisIndex].splitLine.show = amplitudeVisible;
-                }}
-
-                if (amplitudeIndex !== -1) {{
-                    var amplitudeSeries = option.series[amplitudeIndex];
-                    amplitudeSeries.showSymbol = amplitudeVisible;
-                    amplitudeSeries.lineStyle = amplitudeSeries.lineStyle || {{}};
-                    amplitudeSeries.lineStyle.opacity = amplitudeVisible ? 1 : 0;
-                    amplitudeSeries.itemStyle = amplitudeSeries.itemStyle || {{}};
-                    amplitudeSeries.itemStyle.opacity = amplitudeVisible ? 1 : 0;
-                    amplitudeSeries.tooltip = amplitudeSeries.tooltip || {{}};
-                    amplitudeSeries.tooltip.show = amplitudeVisible;
-                }}
-
-                myChart.setOption(option, true);
-
-                if (amplitudeIndex !== -1) {{
-                    myChart.dispatchAction({{
-                        type: amplitudeVisible ? 'legendSelect' : 'legendUnSelect',
-                        name: option.series[amplitudeIndex].name
-                    }});
-                }}
-            }}
-
-            amplitudeButton.addEventListener('click', function () {{
-                amplitudeVisible = !amplitudeVisible;
-                updateAmplitudeButtonText();
-                applyAmplitudeVisibility();
-            }});
-
-            updateAmplitudeButtonText();
             myChart.setOption(option);
-            applyAmplitudeVisibility();
+
+            var amplitudeSeriesName = '振幅（%）';
+            var amplitudeAxisIndex = 1;
+            var amplitudeIndex = option.series.findIndex(function (item) {{
+                return item.name === amplitudeSeriesName;
+            }});
+
+            function syncAmplitudeAxis(selectedMap) {{
+                if (!selectedMap) {{
+                    return;
+                }}
+
+                var isSelected = selectedMap[amplitudeSeriesName];
+                if (typeof isSelected === 'undefined') {{
+                    isSelected = true;
+                }}
+
+                var currentOption = myChart.getOption();
+                if (!currentOption) {{
+                    return;
+                }}
+
+                var axisConfig = (currentOption.yAxis || []).map(function (axis, index) {{
+                    if (index !== amplitudeAxisIndex) {{
+                        return axis;
+                    }}
+
+                    var updatedAxis = Object.assign({{}}, axis);
+                    updatedAxis.show = !!isSelected;
+
+                    var splitLine = Object.assign({{}}, axis.splitLine || {{}});
+                    splitLine.show = !!isSelected;
+                    updatedAxis.splitLine = splitLine;
+
+                    return updatedAxis;
+                }});
+
+                var optionUpdate = {{
+                    yAxis: axisConfig
+                }};
+
+                if (amplitudeIndex !== -1) {{
+                    var currentSeries = (currentOption.series || [])[amplitudeIndex] || {{}};
+                    var tooltipConfig = Object.assign({{}}, currentSeries.tooltip || {{}});
+                    tooltipConfig.show = !!isSelected;
+
+                    optionUpdate.series = [{{
+                        name: amplitudeSeriesName,
+                        showSymbol: !!isSelected,
+                        tooltip: tooltipConfig
+                    }}];
+                }}
+
+                myChart.setOption(optionUpdate, false);
+            }}
+
+            myChart.on('legendselectchanged', function (params) {{
+                if (params.name === amplitudeSeriesName) {{
+                    syncAmplitudeAxis(params.selected);
+                }}
+            }});
+
+            var initialOption = myChart.getOption();
+            var initialLegendSelected = (initialOption.legend && initialOption.legend[0] && initialOption.legend[0].selected) || {{}};
+            syncAmplitudeAxis(initialLegendSelected);
 
             window.addEventListener('resize', function () {{
                 if (myChart) {{
