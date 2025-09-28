@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from tkinter import messagebox, ttk
 import tkinter as tk
 import requests
@@ -174,12 +176,27 @@ def show_data_with_echarts(appkey, sign, days):
 
 # GUI界面
 def create_gui():
-    appkey = 'APPKEY'  # 替换成您的appkey
-    sign = 'SIGN'  # 替换成您的sign
+    env_defaults = {}
+    env_file = Path('.env')
+    if env_file.exists():
+        for line in env_file.read_text(encoding='utf-8').splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#') or '=' not in stripped:
+                continue
+            key, value = stripped.split('=', 1)
+            env_defaults[key.strip()] = value.strip().strip('"').strip("'")
+
+    appkey_var = tk.StringVar(value=os.getenv('NOWAPI_APPKEY', env_defaults.get('NOWAPI_APPKEY', '')))
+    sign_var = tk.StringVar(value=os.getenv('NOWAPI_SIGN', env_defaults.get('NOWAPI_SIGN', '')))
 
     def on_submit():
+        appkey = appkey_var.get().strip()
+        sign = sign_var.get().strip()
         days = days_entry.get()
         ht_type = ht_type_combo.get()
+        if not appkey or not sign:
+            messagebox.showerror("错误", "请先输入 AppKey 和 Sign 凭证！")
+            return
         if not days.isdigit():
             messagebox.showerror("错误", "请输入有效的天数！")
             return
@@ -199,17 +216,27 @@ def create_gui():
     root = tk.Tk()
     root.title("汇率查询工具")
 
-    ttk.Label(root, text="近x天:").grid(row=0, column=0, padx=10, pady=10)
-    days_entry = ttk.Entry(root)
-    days_entry.grid(row=0, column=1, padx=10, pady=10)
+    ttk.Label(root, text="AppKey:").grid(row=0, column=0, padx=10, pady=10, sticky='e')
+    appkey_entry = ttk.Entry(root, textvariable=appkey_var)
+    appkey_entry.grid(row=0, column=1, padx=10, pady=10, sticky='we')
 
-    ttk.Label(root, text="数据类型:").grid(row=1, column=0, padx=10, pady=10)
+    ttk.Label(root, text="Sign:").grid(row=1, column=0, padx=10, pady=10, sticky='e')
+    sign_entry = ttk.Entry(root, textvariable=sign_var, show='*')
+    sign_entry.grid(row=1, column=1, padx=10, pady=10, sticky='we')
+
+    ttk.Label(root, text="近x天:").grid(row=2, column=0, padx=10, pady=10, sticky='e')
+    days_entry = ttk.Entry(root)
+    days_entry.grid(row=2, column=1, padx=10, pady=10, sticky='we')
+
+    ttk.Label(root, text="数据类型:").grid(row=3, column=0, padx=10, pady=10, sticky='e')
     ht_type_combo = ttk.Combobox(root, values=['HT1D', 'HT1W', 'HT1M', 'HTHY', 'HT1Y'], state="readonly")
-    ht_type_combo.grid(row=1, column=1, padx=10, pady=10)
+    ht_type_combo.grid(row=3, column=1, padx=10, pady=10, sticky='we')
     ht_type_combo.current(0)
 
     submit_btn = ttk.Button(root, text="查询", command=on_submit)
-    submit_btn.grid(row=2, column=0, columnspan=2, padx=10, pady=10)
+    submit_btn.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+
+    root.columnconfigure(1, weight=1)
 
     root.mainloop()
 
