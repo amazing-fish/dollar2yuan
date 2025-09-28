@@ -8,6 +8,9 @@ from typing import Dict
 import requests
 import webview
 
+
+_webview_window_open = False
+
 BASE_DATA_PATH = Path(__file__).resolve().parent / "data" / "usd_cny_base.json"
 DEFAULT_BASE_DAYS = 30
 
@@ -223,19 +226,113 @@ def generate_html_for_echarts(data):
         }]
     }
 
+    option_json = json.dumps(echarts_options, ensure_ascii=False)
+
     html_content = f"""
     <!DOCTYPE html>
     <html style="height: 100%">
     <head>
         <meta charset="UTF-8">
         <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.2/echarts.min.js"></script>
+        <style>
+            body {{
+                height: 100%;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+            }}
+
+            #toolbar {{
+                padding: 8px 12px;
+                background-color: #f5f5f5;
+                border-bottom: 1px solid #e0e0e0;
+                display: flex;
+                justify-content: flex-end;
+            }}
+
+            #toolbar button {{
+                padding: 6px 12px;
+                font-size: 14px;
+                cursor: pointer;
+            }}
+
+            #main {{
+                flex: 1 1 auto;
+            }}
+        </style>
     </head>
-    <body style="height: 100%; margin: 0">
-        <div id="main" style="height: 100%"></div>
+    <body>
+        <div id="toolbar">
+            <button id="toggle-amplitude">切换振幅显示</button>
+        </div>
+        <div id="main"></div>
         <script type="text/javascript">
             var myChart = echarts.init(document.getElementById('main'), 'light');
-            var option = {echarts_options};
+            var option = {option_json};
+
+            if (!option.legend) {{
+                option.legend = {{}};
+            }}
+            if (!option.legend.selected) {{
+                option.legend.selected = {{}};
+            }}
+
+            var amplitudeIndex = option.series.findIndex(function (item) {{
+                return item.name === '振幅（%）';
+            }});
+            var amplitudeAxisIndex = 1;
+            var amplitudeButton = document.getElementById('toggle-amplitude');
+            var amplitudeVisible = true;
+
+            function updateAmplitudeButtonText() {{
+                amplitudeButton.textContent = amplitudeVisible ? '隐藏振幅' : '显示振幅';
+            }}
+
+            function applyAmplitudeVisibility() {{
+                option.legend.selected['振幅（%）'] = amplitudeVisible;
+
+                if (Array.isArray(option.yAxis) && option.yAxis.length > amplitudeAxisIndex) {{
+                    option.yAxis[amplitudeAxisIndex].show = amplitudeVisible;
+                    option.yAxis[amplitudeAxisIndex].splitLine = option.yAxis[amplitudeAxisIndex].splitLine || {{}};
+                    option.yAxis[amplitudeAxisIndex].splitLine.show = amplitudeVisible;
+                }}
+
+                if (amplitudeIndex !== -1) {{
+                    var amplitudeSeries = option.series[amplitudeIndex];
+                    amplitudeSeries.showSymbol = amplitudeVisible;
+                    amplitudeSeries.lineStyle = amplitudeSeries.lineStyle || {{}};
+                    amplitudeSeries.lineStyle.opacity = amplitudeVisible ? 1 : 0;
+                    amplitudeSeries.itemStyle = amplitudeSeries.itemStyle || {{}};
+                    amplitudeSeries.itemStyle.opacity = amplitudeVisible ? 1 : 0;
+                    amplitudeSeries.tooltip = amplitudeSeries.tooltip || {{}};
+                    amplitudeSeries.tooltip.show = amplitudeVisible;
+                }}
+
+                myChart.setOption(option, true);
+
+                if (amplitudeIndex !== -1) {{
+                    myChart.dispatchAction({{
+                        type: amplitudeVisible ? 'legendSelect' : 'legendUnSelect',
+                        name: option.series[amplitudeIndex].name
+                    }});
+                }}
+            }}
+
+            amplitudeButton.addEventListener('click', function () {{
+                amplitudeVisible = !amplitudeVisible;
+                updateAmplitudeButtonText();
+                applyAmplitudeVisibility();
+            }});
+
+            updateAmplitudeButtonText();
             myChart.setOption(option);
+            applyAmplitudeVisibility();
+
+            window.addEventListener('resize', function () {{
+                if (myChart) {{
+                    myChart.resize();
+                }}
+            }});
         </script>
     </body>
     </html>
@@ -245,9 +342,25 @@ def generate_html_for_echarts(data):
 
 
 def show_data_with_echarts(data, title='ECharts Visualization'):
+    global _webview_window_open
+
+    if _webview_window_open:
+        messagebox.showinfo("提示", "图表窗口已打开，请先关闭后再试。")
+        return
+
     html_content = generate_html_for_echarts(data)
-    webview.create_window(title, html=html_content)
-    webview.start()
+    window = webview.create_window(title, html=html_content)
+
+    def on_closed():
+        global _webview_window_open
+        _webview_window_open = False
+
+    window.events.closed += on_closed
+    _webview_window_open = True
+    try:
+        webview.start()
+    finally:
+        _webview_window_open = False
 
 
 # GUI界面
