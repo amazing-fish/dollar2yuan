@@ -266,6 +266,9 @@ def create_gui():
 
     env_defaults = load_local_env()
 
+    root = tk.Tk()
+    root.title("汇率查询工具")
+
     api_key_var = tk.StringVar(value=os.getenv('ALPHAVANTAGE_API_KEY', env_defaults.get('ALPHAVANTAGE_API_KEY', '')))
     outputsize_var = tk.StringVar(value=os.getenv('ALPHAVANTAGE_OUTPUTSIZE', env_defaults.get('ALPHAVANTAGE_OUTPUTSIZE', 'compact')) or 'compact')
 
@@ -332,9 +335,6 @@ def create_gui():
             return
 
         show_data_with_echarts(data, title="自定义数据走势")
-
-    root = tk.Tk()
-    root.title("汇率查询工具")
 
     # 启动即尝试读取本地基础数据（可被 on_submit/show_base_data 使用）
     base_data = load_base_data()
