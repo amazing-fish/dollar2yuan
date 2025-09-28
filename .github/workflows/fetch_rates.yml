@@ -1,0 +1,98 @@
+name: 更新美元兑人民币基础数据
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 设置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 获取并更新基础汇率数据
+        env:
+          APPKEY: ${{ secrets.NOWAPI_APPKEY }}
+          SIGN: ${{ secrets.NOWAPI_SIGN }}
+          BASE_DAYS: ${{ vars.BASE_DAYS || '30' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timedelta
+          from pathlib import Path
+
+          import requests
+
+          appkey = os.environ.get('APPKEY')
+          sign = os.environ.get('SIGN')
+          base_days = int(os.environ.get('BASE_DAYS', '30'))
+
+          if not appkey or not sign:
+              print('缺少 NOWAPI 凭证，跳过数据更新。')
+              sys.exit(0)
+
+          end_date = datetime.utcnow()
+          start_date = end_date - timedelta(days=base_days)
+          params = {
+              'app': 'finance.rate_history.v3',
+              'curNoS': 'USDCNY',
+              'htType': 'HT1D',
+              'dateYmdS': f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}",
+              'appkey': appkey,
+              'sign': sign,
+              'format': 'json',
+          }
+
+          try:
+              response = requests.get('https://sapi.k780.com', params=params, timeout=15)
+              response.raise_for_status()
+          except requests.RequestException as exc:
+              print(f'请求失败：{exc}')
+              sys.exit(1)
+
+          payload = response.json()
+          if payload.get('success') != '1':
+              print(f"API 返回错误：{payload.get('msg', '未知错误')}")
+              sys.exit(1)
+
+          dt_list = payload.get('result', {}).get('dtList', [])
+          processed = {
+              'success': payload['success'],
+              'result': {
+                  'source': 'finance.rate_history.v3',
+                  'fetched_at': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                  'dtList': dt_list,
+              },
+          }
+
+          target_path = Path('data') / 'usd_cny_base.json'
+          target_path.parent.mkdir(parents=True, exist_ok=True)
+          target_path.write_text(json.dumps(processed, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(f'基础数据已写入 {target_path}')
+          PY
+
+      - name: 提交更新
+        run: |
+          if git diff --quiet --exit-code data/usd_cny_base.json; then
+            echo "基础数据没有变化，跳过提交。"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/usd_cny_base.json
+          git commit -m "chore: update USD/CNY base rates"
+          git push
