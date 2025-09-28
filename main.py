@@ -4,6 +4,7 @@ from tkinter import messagebox, ttk
 import tkinter as tk
 import requests
 from datetime import datetime, timedelta
+from typing import Dict
 import webview
 
 '''
@@ -26,9 +27,13 @@ def fetch_data(appkey, sign, days, ht_type='HT1D'):
         'sign': sign,
         'format': 'json',
     }
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=10)
+    response.raise_for_status()
     data = response.json()
-    return data if data['success'] == '1' else None
+    if data.get('success') != '1':
+        err_msg = data.get('msgid') or data.get('msg') or '未知错误'
+        raise ValueError(f"API 返回失败：{err_msg}")
+    return data
 
 
 def generate_html_for_echarts(data):
@@ -176,15 +181,19 @@ def show_data_with_echarts(appkey, sign, days):
 
 # GUI界面
 def create_gui():
-    env_defaults = {}
-    env_file = Path('.env')
-    if env_file.exists():
-        for line in env_file.read_text(encoding='utf-8').splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#') or '=' not in stripped:
-                continue
-            key, value = stripped.split('=', 1)
-            env_defaults[key.strip()] = value.strip().strip('"').strip("'")
+    def load_local_env() -> Dict[str, str]:
+        env_defaults: Dict[str, str] = {}
+        env_file = Path(__file__).resolve().parent / '.env'
+        if env_file.exists():
+            for line in env_file.read_text(encoding='utf-8').splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#') or '=' not in stripped:
+                    continue
+                key, value = stripped.split('=', 1)
+                env_defaults[key.strip()] = value.strip().strip('"').strip("'")
+        return env_defaults
+
+    env_defaults = load_local_env()
 
     appkey_var = tk.StringVar(value=os.getenv('NOWAPI_APPKEY', env_defaults.get('NOWAPI_APPKEY', '')))
     sign_var = tk.StringVar(value=os.getenv('NOWAPI_SIGN', env_defaults.get('NOWAPI_SIGN', '')))
@@ -207,9 +216,9 @@ def create_gui():
             webview.start()
 
         except ValueError as e:
-            messagebox.showerror("错误", f"API错误：{e}")
-        except ConnectionError as e:
-            messagebox.showerror("连接错误", f"网络或API连接问题：{e}")
+            messagebox.showerror("错误", f"API 错误：{e}")
+        except requests.exceptions.RequestException as e:
+            messagebox.showerror("连接错误", f"网络或 API 连接问题：{e}")
         except Exception as e:
             messagebox.showerror("未知错误", f"出现未知错误：{e}")
 
