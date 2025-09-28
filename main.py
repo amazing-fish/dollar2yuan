@@ -1,8 +1,10 @@
+import os
+from pathlib import Path
 from tkinter import messagebox, ttk
 import tkinter as tk
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
+from typing import Dict
 import requests
 import webview
 
@@ -31,17 +33,22 @@ def fetch_data(appkey, sign, days, ht_type='HT1D'):
         'sign': sign,
         'format': 'json',
     }
-
+    
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
     except requests.RequestException as exc:
         raise ConnectionError("无法连接到汇率服务，请检查网络或稍后再试。") from exc
 
-    data = response.json()
-    if data.get('success') != '1':
-        error_msg = data.get('msg', '未知错误')
-        raise ValueError(f"API返回错误：{error_msg}")
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise ValueError("API 返回的内容不是有效的 JSON。") from exc
+
+    if str(data.get('success')) != '1':
+        err_msg = data.get('msgid') or data.get('msg') or data.get('error') or '未知错误'
+        raise ValueError(f"API 返回失败：{err_msg}")
+
     return data
 
 
@@ -206,8 +213,22 @@ def show_data_with_echarts(data, title='ECharts Visualization'):
 
 # GUI界面
 def create_gui():
-    appkey = 'APPKEY'  # 替换成您的appkey
-    sign = 'SIGN'  # 替换成您的sign
+    def load_local_env() -> Dict[str, str]:
+        env_defaults: Dict[str, str] = {}
+        env_file = Path(__file__).resolve().parent / '.env'
+        if env_file.exists():
+            for line in env_file.read_text(encoding='utf-8').splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#') or '=' not in stripped:
+                    continue
+                key, value = stripped.split('=', 1)
+                env_defaults[key.strip()] = value.strip().strip('"').strip("'")
+        return env_defaults
+
+    env_defaults = load_local_env()
+
+    appkey_var = tk.StringVar(value=os.getenv('NOWAPI_APPKEY', env_defaults.get('NOWAPI_APPKEY', '')))
+    sign_var = tk.StringVar(value=os.getenv('NOWAPI_SIGN', env_defaults.get('NOWAPI_SIGN', '')))
 
     base_data = None
 
@@ -236,11 +257,19 @@ def create_gui():
         messagebox.showinfo("成功", f"基础数据已更新\n最新更新时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     def on_submit():
+        appkey = appkey_var.get().strip()
+        sign = sign_var.get().strip()
         days = days_entry.get().strip()
-        ht_type = ht_type_combo.get()
+        ht_type = ht_type_combo.get().strip()
 
+        # 优先支持“仅查看基础数据”的路径：不需要凭证
         if not days:
             show_base_data()
+            return
+
+        # 需要发起请求时，必须提供凭证
+        if not appkey or not sign:
+            messagebox.showerror("错误", "请先输入 AppKey 和 Sign 凭证！")
             return
 
         if not days.isdigit():
@@ -250,10 +279,10 @@ def create_gui():
         try:
             data = fetch_data(appkey, sign, days, ht_type)
         except ValueError as e:
-            messagebox.showerror("错误", f"API错误：{e}")
+            messagebox.showerror("错误", f"API 错误：{e}")
             return
         except ConnectionError as e:
-            messagebox.showerror("连接错误", f"网络或API连接问题：{e}")
+            messagebox.showerror("连接错误", f"网络或 API 连接问题：{e}")
             return
         except Exception as e:
             messagebox.showerror("未知错误", f"出现未知错误：{e}")
@@ -264,24 +293,42 @@ def create_gui():
     root = tk.Tk()
     root.title("汇率查询工具")
 
+    # 启动即尝试读取本地基础数据（可被 on_submit/show_base_data 使用）
     base_data = load_base_data()
 
-    ttk.Label(root, text="近x天:").grid(row=0, column=0, padx=10, pady=10)
-    days_entry = ttk.Entry(root)
-    days_entry.grid(row=0, column=1, padx=10, pady=10)
+    # 新增凭证输入框
+    ttk.Label(root, text="AppKey:").grid(row=0, column=0, padx=10, pady=10, sticky='e')
+    appkey_entry = ttk.Entry(root, textvariable=appkey_var)
+    appkey_entry.grid(row=0, column=1, padx=10, pady=10, sticky='we')
 
-    ttk.Label(root, text="数据类型:").grid(row=1, column=0, padx=10, pady=10)
+    ttk.Label(root, text="Sign:").grid(row=1, column=0, padx=10, pady=10, sticky='e')
+    sign_entry = ttk.Entry(root, textvariable=sign_var, show='*')
+    sign_entry.grid(row=1, column=1, padx=10, pady=10, sticky='we')
+
+    # 近x天
+    ttk.Label(root, text="近x天:").grid(row=2, column=0, padx=10, pady=10, sticky='e')
+    days_entry = ttk.Entry(root)
+    days_entry.grid(row=2, column=1, padx=10, pady=10, sticky='we')
+
+    # 数据类型
+    ttk.Label(root, text="数据类型:").grid(row=3, column=0, padx=10, pady=10, sticky='e')
     ht_type_combo = ttk.Combobox(root, values=['HT1D', 'HT1W', 'HT1M', 'HTHY', 'HT1Y'], state="readonly")
-    ht_type_combo.grid(row=1, column=1, padx=10, pady=10)
+    ht_type_combo.grid(row=3, column=1, padx=10, pady=10, sticky='we')
     ht_type_combo.current(0)
 
+    # 按钮：查询/查看基础数据（days 为空 → 查看基础数据；非空 → 执行查询并需要凭证）
     submit_btn = ttk.Button(root, text="查询/查看基础数据", command=on_submit)
-    submit_btn.grid(row=2, column=0, columnspan=2, padx=10, pady=10)
+    submit_btn.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
 
+    # 刷新本地基础数据
     refresh_btn = ttk.Button(root, text="刷新基础数据", command=refresh_base_data)
-    refresh_btn.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+    refresh_btn.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+
+    # 列伸缩
+    root.columnconfigure(1, weight=1)
 
     root.mainloop()
+
 
 
 if __name__ == "__main__":
