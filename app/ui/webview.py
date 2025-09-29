@@ -4,7 +4,7 @@ import json
 from importlib import resources
 from string import Template
 from threading import Lock
-from typing import Optional
+from typing import Optional, Tuple
 
 import webview
 
@@ -27,8 +27,38 @@ def _load_template() -> Template:
     return _TEMPLATE_CACHE
 
 
+def _calculate_axis_bounds(values: list[float], pad_ratio: float = 0.08, keep_zero_floor: bool = False) -> Tuple[Optional[float], Optional[float]]:
+    if not values:
+        return None, None
+
+    minimum = min(values)
+    maximum = max(values)
+
+    if minimum == maximum:
+        padding = abs(minimum) * 0.05 or 0.01
+    else:
+        padding = (maximum - minimum) * pad_ratio
+
+    lower = minimum - padding
+    upper = maximum + padding
+
+    if keep_zero_floor and lower > 0.0:
+        lower = 0.0
+
+    return round(lower, 4), round(upper, 4)
+
+
 def _build_option(snapshot: RatesSnapshot) -> dict:
     data = snapshot.to_chart_payload()
+    price_min, price_max = _calculate_axis_bounds(
+        data["open"] + data["close"] + data["high"] + data["low"],
+        pad_ratio=0.06,
+    )
+    amplitude_min, amplitude_max = _calculate_axis_bounds(
+        data["amplitude"],
+        pad_ratio=0.1,
+        keep_zero_floor=True,
+    )
     color_palette = ["#2563eb", "#0ea5e9", "#f97316", "#a855f7", "#ef4444"]
     base_text_style = {"fontFamily": "'Inter', 'Helvetica Neue', 'PingFang SC', sans-serif"}
     return {
@@ -101,6 +131,8 @@ def _build_option(snapshot: RatesSnapshot) -> dict:
                 "axisLine": {"lineStyle": {"color": "#2563eb"}},
                 "axisLabel": {"color": "#475569"},
                 "splitLine": {"lineStyle": {"color": "#e2e8f0"}},
+                **({"min": price_min} if price_min is not None else {}),
+                **({"max": price_max} if price_max is not None else {}),
             },
             {
                 "type": "value",
@@ -108,6 +140,8 @@ def _build_option(snapshot: RatesSnapshot) -> dict:
                 "axisLine": {"lineStyle": {"color": "#ef4444"}},
                 "axisLabel": {"color": "#475569"},
                 "splitLine": {"lineStyle": {"color": "#f1f5f9", "type": "dashed"}},
+                **({"min": amplitude_min} if amplitude_min is not None else {}),
+                **({"max": amplitude_max} if amplitude_max is not None else {}),
             },
         ],
         "series": [
