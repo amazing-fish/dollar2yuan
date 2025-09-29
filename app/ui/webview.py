@@ -29,77 +29,132 @@ def _load_template() -> Template:
 
 def _build_option(snapshot: RatesSnapshot) -> dict:
     data = snapshot.to_chart_payload()
+    color_palette = ["#2563eb", "#0ea5e9", "#f97316", "#a855f7", "#ef4444"]
+    base_text_style = {"fontFamily": "'Inter', 'Helvetica Neue', 'PingFang SC', sans-serif"}
     return {
+        "backgroundColor": "transparent",
+        "color": color_palette,
+        "textStyle": base_text_style,
+        "animationDuration": 900,
         "tooltip": {
             "trigger": "axis",
+            "backgroundColor": "rgba(15,23,42,0.92)",
+            "borderWidth": 0,
+            "textStyle": {"color": "#f8fafc", **base_text_style},
             "axisPointer": {
                 "type": "cross",
-                "crossStyle": {"color": "#999"},
+                "crossStyle": {"color": "#475569", "width": 1.2},
             },
-            "formatter": "Date: {b0}<br/>{a0}: {c0} CNY<br/>{a1}: {c1} CNY<br/>{a2}: {c2} CNY<br/>{a3}: {c3} CNY<br/>{a4}: {c4}%",
+            "formatter": (
+                "{b0}<br/>"
+                "开盘价：{c0} CNY<br/>"
+                "收盘价：{c1} CNY<br/>"
+                "最高价：{c2} CNY<br/>"
+                "最低价：{c3} CNY<br/>"
+                "振幅：{c4}%"
+            ),
         },
         "legend": {
             "data": ["开盘价", "收盘价", "最高价", "最低价", "振幅（%）"],
-            "orient": "horizontal",
-            "top": "top",
-            "left": "center",
+            "icon": "roundRect",
+            "itemWidth": 18,
+            "itemHeight": 10,
+            "top": 16,
+            "textStyle": {"color": "#1e293b", **base_text_style},
         },
         "grid": {
-            "left": "3%",
-            "right": "4%",
-            "bottom": "3%",
+            "left": "6%",
+            "right": "6%",
+            "bottom": "15%",
+            "top": "20%",
             "containLabel": True,
         },
         "toolbox": {
+            "show": True,
+            "right": 24,
             "feature": {
                 "dataZoom": {
                     "yAxisIndex": "none",
-                    "title": {"zoom": "Zoom region", "back": "Restore zoom"},
+                    "title": {"zoom": "区域缩放", "back": "还原"},
                 },
-                "restore": {},
-                "saveAsImage": {},
-                "magicType": {
-                    "type": ["line", "bar"],
-                    "title": {"line": "Line Chart", "bar": "Bar Chart"},
-                },
+                "saveAsImage": {"title": "导出图片"},
+                "restore": {"title": "还原"},
             },
-            "right": 10,
+            "iconStyle": {"borderColor": "#1e293b"},
         },
+        "dataZoom": [
+            {"type": "slider", "height": 18, "bottom": 24, "borderColor": "#cbd5f5"},
+            {"type": "inside"},
+        ],
         "xAxis": {
             "type": "category",
             "data": data["dates"],
+            "axisLine": {"lineStyle": {"color": "#cbd5f5"}},
+            "axisLabel": {"color": "#475569"},
             "axisPointer": {"type": "shadow"},
+            "boundaryGap": False,
         },
         "yAxis": [
             {
                 "type": "value",
-                "name": "价格",
-                "min": "dataMin",
-                "max": "dataMax",
-                "position": "right",
-                "axisLine": {"lineStyle": {"color": "#5793f3"}},
-                "axisLabel": {"formatter": "{value} CNY"},
+                "name": "价格 (CNY)",
+                "axisLine": {"lineStyle": {"color": "#2563eb"}},
+                "axisLabel": {"color": "#475569"},
+                "splitLine": {"lineStyle": {"color": "#e2e8f0"}},
             },
             {
                 "type": "value",
-                "name": "振幅（%）",
-                "min": 0,
-                "max": "dataMax",
-                "position": "left",
-                "axisLine": {"lineStyle": {"color": "#d14a61"}},
-                "axisLabel": {"formatter": "{value}%"},
-                "splitLine": {"show": True},
+                "name": "振幅 (%)",
+                "axisLine": {"lineStyle": {"color": "#ef4444"}},
+                "axisLabel": {"color": "#475569"},
+                "splitLine": {"lineStyle": {"color": "#f1f5f9", "type": "dashed"}},
             },
         ],
         "series": [
-            {"name": "开盘价", "type": "line", "data": data["open"]},
-            {"name": "收盘价", "type": "line", "data": data["close"]},
-            {"name": "最高价", "type": "line", "data": data["high"]},
-            {"name": "最低价", "type": "line", "data": data["low"]},
+            {
+                "name": "开盘价",
+                "type": "line",
+                "smooth": True,
+                "lineStyle": {"width": 2},
+                "areaStyle": {
+                    "opacity": 0.1,
+                    "color": "rgba(37, 99, 235, 0.15)",
+                },
+                "data": data["open"],
+            },
+            {
+                "name": "收盘价",
+                "type": "line",
+                "smooth": True,
+                "lineStyle": {"width": 2},
+                "areaStyle": {
+                    "opacity": 0.08,
+                    "color": "rgba(14, 165, 233, 0.2)",
+                },
+                "data": data["close"],
+            },
+            {
+                "name": "最高价",
+                "type": "line",
+                "smooth": True,
+                "lineStyle": {"width": 2, "type": "dashed"},
+                "data": data["high"],
+            },
+            {
+                "name": "最低价",
+                "type": "line",
+                "smooth": True,
+                "lineStyle": {"width": 2, "type": "dashed"},
+                "data": data["low"],
+            },
             {
                 "name": "振幅（%）",
                 "type": "line",
                 "yAxisIndex": 1,
+                "smooth": True,
+                "lineStyle": {"width": 2},
+                "symbol": "circle",
+                "symbolSize": 6,
                 "data": data["amplitude"],
             },
         ],

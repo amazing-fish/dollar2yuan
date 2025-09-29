@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 
 @dataclass(frozen=True)
@@ -132,3 +132,21 @@ class RatesSnapshot:
 
     def is_empty(self) -> bool:
         return not self.bars
+
+    def trading_days(self) -> int:
+        return len(self.bars)
+
+    def first_bar(self) -> Optional[RateBar]:
+        if not self.bars:
+            return None
+        return self.bars[0]
+
+    def latest_bar(self) -> Optional[RateBar]:
+        if not self.bars:
+            return None
+        return self.bars[-1]
+
+    def date_span(self) -> str:
+        if not self.bars:
+            return ""
+        return f"{self.bars[0].date} — {self.bars[-1].date}"
