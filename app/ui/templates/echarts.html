@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="height: 100%">
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            font-family: "Inter", "Segoe UI", "PingFang SC", "Helvetica Neue", sans-serif;
+            background: radial-gradient(circle at top left, #dbeafe, #e0f2fe 40%, #f8fafc 100%);
+        }
+
+        .card {
+            width: min(1120px, 100%);
+            height: min(720px, 100%);
+            display: flex;
+            flex-direction: column;
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .card__header {
+            padding: 28px 32px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(14, 165, 233, 0.88));
+            color: #f8fafc;
+        }
+
+        .card__title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+        }
+
+        .card__subtitle {
+            font-size: 14px;
+            opacity: 0.85;
+        }
+
+        #main {
+            flex: 1 1 auto;
+            padding: 24px 28px 32px;
+        }
+
+        @media (max-width: 960px) {
+            body {
+                padding: 12px;
+            }
+
+            .card {
+                border-radius: 20px;
+            }
+
+            #main {
+                padding: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="card__header">
+        <div class="card__title">${title}</div>
+        <div class="card__subtitle">交互式现代图形，洞察美元兑人民币的每日走势</div>
+    </div>
+    <div id="main"></div>
+</div>
+<script type="text/javascript">
+    const chart = echarts.init(document.getElementById('main'), '${theme}');
+    const option = ${option_json};
+
+    chart.setOption(option);
+
+    chart.on('legendselectchanged', function (params) {
+        if (params.name === '振幅（%）') {
+            const selected = params.selected['振幅（%）'];
+            const currentOption = chart.getOption();
+            if (currentOption.yAxis && currentOption.yAxis[1]) {
+                currentOption.yAxis[1].show = !!selected;
+                currentOption.yAxis[1].splitLine = currentOption.yAxis[1].splitLine || {};
+                currentOption.yAxis[1].splitLine.show = !!selected;
+                chart.setOption({
+                    yAxis: currentOption.yAxis
+                });
+            }
+        }
+    });
+
+    window.addEventListener('resize', function () {
+        chart.resize();
+    });
+</script>
+</body>
+</html>
